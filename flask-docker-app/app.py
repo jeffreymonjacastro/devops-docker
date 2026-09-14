@@ -1,11 +1,28 @@
-from flask import Flask, jsonify, render_template_string
+from flask import Flask, jsonify, render_template_string, request
+import os
+from psycopg_pool import ConnectionPool
+
+
+def db_connect():
+    url = (
+        f"host={os.environ.get('DB_HOST')} "
+        f"dbname={os.environ.get('DB_DATABASE')} "
+        f"user={os.environ.get('DB_USER')} "
+        f"password={os.environ.get('DB_PASSWORD')}"
+    )
+    pool = ConnectionPool(url)
+    pool.wait()
+    return pool
+
+
+pool = db_connect()
 
 app = Flask(__name__)
 
-# Página principal
-@app.route('/')
+
+@app.route("/")
 def home():
-    html = '''
+    html = """
     <!DOCTYPE html>
     <html>
     <head>
@@ -18,33 +35,48 @@ def home():
     </head>
     <body>
         <div class="container">
-            <h1>🐳 Flask Docker App</h1>
-            <p>¡Aplicación Flask ejecutándose en Docker!</p>
-            <p><a href="/api/health">Verificar estado de la API</a></p>
-            <p><a href="/api/info">Información del contenedor</a></p>
+            <h1>Flask + PostgreSQL</h1>
+            <p>Stack Flask + PostgreSQL corriendo con Docker Compose.</p>
+            <ul>
+                <li><a href="/api/health">Estado de la API</a></li>
+                <li><a href="/items">Listar items</a></li>
+            </ul>
         </div>
     </body>
     </html>
-    '''
+    """
     return render_template_string(html)
 
-# API endpoints
-@app.route('/api/health')
+
+@app.route("/api/health")
 def health():
-    return jsonify({
-        "status": "healthy",
-        "message": "Flask app funcionando correctamente"
-    })
+    return jsonify({"status": "healthy", "version": os.environ.get("APP_VERSION")})
 
-@app.route('/api/info')
-def info():
-    import os
-    return jsonify({
-        "app": "Flask Docker Demo",
-        "version": "1.0.0",
-        "python_version": os.sys.version,
-        "hostname": os.uname().nodename
-    })
 
-if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000, debug=True)
+def save_item(priority, task):
+    with pool.connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "INSERT INTO item (priority, task) VALUES (%s, %s)", (priority, task)
+            )
+            conn.commit()
+
+
+def get_items():
+    with pool.connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT item_id, priority, task FROM item")
+            return [{"id": r[0], "priority": r[1], "task": r[2]} for r in cur]
+
+
+@app.route("/items", methods=["GET", "POST"])
+def items():
+    if request.method == "POST":
+        body = request.get_json()
+        save_item(body["priority"], body["task"])
+        return {"message": "item saved!"}, 201
+    return get_items(), 200
+
+
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=5000, debug=True)

@@ -1,0 +1,26 @@
+services:
+  flask:
+    build: .
+    ports:
+      - "8080:5000"
+    environment:
+      - APP_VERSION=2.0.0
+      - DB_HOST=postgres
+      - DB_DATABASE=mydb
+      - DB_USER=myuser
+      - DB_PASSWORD=devops123
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  postgres:
+    image: postgres:16.3
+    environment:
+      - POSTGRES_USER=myuser
+      - POSTGRES_DB=mydb
+      - POSTGRES_PASSWORD=devops123
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U myuser -d mydb"]
+      interval: 5s
+      timeout: 5s
+      retries: 5

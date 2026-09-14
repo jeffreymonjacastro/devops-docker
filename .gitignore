@@ -1,0 +1,2 @@
+flask-docker-app/.env.dev
+flask-docker-app/pg_password.txt
